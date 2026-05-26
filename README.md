@@ -20,7 +20,7 @@ The heuristic does not account for weather changes in the future. The weaher in 
 
 We also need to consider the fact that certain appliances cannot be turned on at any time. One example is the TV which needs to be turned on whenever the user needs it. We cannot tell the user to watch TV only when the sun is up.
 
-## Useing the system
+## Using the system
 The user first needs to plug the raspberry pie into their inverter (see the section about raspberry Pi below for more details). The device needs to monitor for a minimum of one week.
 
 Once the Pi is working, the user can log into the server. They need to enter the specifications of their system (their location, capacity of the solar panels, capacity of the batteries, etc). They then need to manually enter what appliances they have at their house.

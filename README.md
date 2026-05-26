@@ -7,7 +7,7 @@
 ## Problem definition
 Since the crisis that started in 2019 in Lebanon, state provided electricity has become almost absent. A lot of people have turned for solar power as an alternative. Many of these people also use solar power as their only electricity source. For these people, if their batteries run out of charge, they end up without electricity until the sun comes up again to recharge.
 
-The main problem is the following: charging peaks and usage peaks don't align. Charging peaks usually around noon, when the sun shines the most. However, consumption peaks around the evening, when people come back from work/school, and they need to turn on, lights, TVs, ACs, etc.
+The main problem is the following: charging peaks and usage peaks don't align. Charging peaks usually around noon, when the sun shines the most. However, consumption peaks around the evening, when people come back from work/school, and they need to turn on lights, TVs, ACs, etc.
 
 The goal of this project is to give people who may be struggling to properly manage the power genrated by their solar panel systems recommended schedules that optimize electricity usage. This schedule should maximize the amount of electricity consumed while keeping the battery SoC from running below a certain percentage specified by the user. This schedule should tell the user when to use each of their appliances on an hourly basis.
 

@@ -11,3 +11,11 @@ Our datasets included:
 
 
 The files `prepare_plegma.ipynb` `prepare_refit.ipynb` are used to filter unwanted appliances and turn the data from continuous power measurements to binary On/Off using predefined thresholds. The user needs to download the corresponding datasets and place them in `Plegma_Dataset` and `REFIT_Dataset` folders before running them. `prepare_tv.ipynb` is used to parse the TV usage times from the `atusact.csv` file which the user needs to download as well.
+
+## Training Classifiers
+The files `XGBoost_plegma.ipynb` `XGBoost_Refit.ipynb` `XGBoost_tv.ipynb` train XGBoost models on theri respective datasets. All of them use GridSearchCV with 5 fold cross validation to get optimal models, along with an 80/20 train/test split. We also used `scale_pos_weight` since many of the datasets are imbalanced, with many appliances being off most of the time, resulting in the majority of samples being Off, and only a few being On. Make sure to run the data preparation notebooks before running the training notebooks.
+
+## Tuning the Classifiers
+Every household uses their appliances in a different way. No matter the size of dataset we use for training, a model can only learn th genral patterns of usage of certain appliances (e.g. ACs turn on when the weather is warmer, TVs turn on mostly during the evening, etc). Some appliances such as washing machines do not have such patterns. One way to solve this issue is to create personalized models for each household, which can be trained on data provided by the household itself and learn their specific usage patterns.
+
+The files `tuning.ipynb` takes a base model a fine tunes on using new data. It requires a minimum of 168 hours (rows) of data. The tunig is done by adding 150 decision trees based on the new data. The result is a model that lears the patterns of the household while keeping the patterns it learned from its original training.

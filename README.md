@@ -21,3 +21,12 @@ Every household uses their appliances in a different way. No matter the size of 
 The files `tuning.ipynb` takes a base model a fine tunes on using new data. It requires a minimum of 168 hours (rows) of data. The tunig is done by adding 150 decision trees based on the new data. The result is a model that lears the patterns of the household while keeping the patterns it learned from its original training.
 
 The file `tuning_test.ipynb` runs a simulation to test the performance of the tuning. It generates a 2 weeks electricity usage schedule, fine tunes the original models on the first week only, and compares the performance on the second week of the original XGBoost model and the fine tuned one.
+
+## Raspberry Pi and usage disaggregation
+The file `logger.py` runs on a respberry pi 3 and collects data from solar inverters. It supports the three most popular brands in Lebanon (Voltronic, Growatt, Deye) as well as any inverter based on the architectures of those brands. For Voltronic inverters, the program uses https://github.com/jblance/mpp-solar#, a library used to communicate with those inverters. For Growatt inverters, the program uses https://github.com/johanmeijer/grott. Similarly, the progrram uses https://github.com/UnknownHero99/pydeye for Deye based inverters.
+
+Voltronic inverters can connect the the Pi via USB, while Growatt and Deye inverters need to connect via RS485 adapters (you can use an RS485 to USB adapter).
+
+The raspberry Pi was only tested on a Voltronic inverter as this is the only one we had access to (Raggie RG-MH3500W Hybrid Solar Inverter, uses voltronic architecture). The device should also work on Growatt and Deye based inverters, but we were not able to test it.
+
+Since the raspberry Pi can only provide aggregate electricity usage, we needed a method to disaggregate the usage into different eletrical appliances. For this we developed an NILM script that uses template matching to detect different appliances. When the user first installs the system, they need to guide it by telling it when they turned on each appliance and when they turned it back off. This only needs to be done once per appliance. With these timestamps, the system can look at the aggregate power provided by the raspberry Pi and identify the pattern of the appliance, which it can memorize and use to detect the appliance later on. This all can be seen in the `NILM.ipynb` notebook. The template is based on peak_power, steady_state_power, settle_time, and variance.

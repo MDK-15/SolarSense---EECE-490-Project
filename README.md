@@ -44,3 +44,13 @@ The following goals were set to the LP:
 * Waste (100): the battery should not stay at 100% while solar panels are still able to produce energy
 * Comfort (50): the LP should try, whenever possible, to keep the keep the number of usage hours per appliance instact. It should only cut hours when necessary.
 * Deviation (10): The LP has a weak preference for the original schedule provided by the user.
+
+## Fault Detection
+Since our raspberry Pi already collects logs about solar charging rates and battery charging and discharging rates, we decided to implement two unsupervised learning models for fault detection on both the solar panels and the batteries.
+
+The solar fault detection model uses data from NREL PVDAQ, a database monitoring solar panels accross many years. We used a Conv1D autoencoder trained on healthy windows, and HDBSCAN with K-Means fallback for error clustering. We identified four types of error: Intermittent, Shade, Inverter Clipping, and Soiling/Degradation.
+
+The battery fault detection model uses NASA+CALCE battery datasets. We used an LSTM autoencoder trained on healthy windows, and HDBSCAN+K-Means fallback for error clustering. The detected fault types are: Overcharge, over-discharge, capacity fade, thermal fault, short circuit, internal resistance rise.
+
+## Cloud hosting and Interface
+For hosting we used Google Cloud. The app was developed in Flask, and uses SQLite for database storage. Every user gets their own account, which contains their system specifications, their appliances with their respective calibrations, and their own fine tuned classifiers. The interface has three tabs: a Home page, a schedule generation page, and a disgnostics page (for the error detection models).

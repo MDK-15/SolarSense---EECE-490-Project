@@ -46,6 +46,8 @@ The files `prepare_plegma.ipynb` `prepare_refit.ipynb` are used to filter unwant
 ## Training Classifiers
 The files `XGBoost_plegma.ipynb` `XGBoost_Refit.ipynb` `XGBoost_tv.ipynb` train XGBoost models on theri respective datasets. All of them use GridSearchCV with 5 fold cross validation to get optimal models, along with an 80/20 train/test split. We also used `scale_pos_weight` since many of the datasets are imbalanced, with many appliances being off most of the time, resulting in the majority of samples being Off, and only a few being On. Make sure to run the data preparation notebooks before running the training notebooks.
 
+You may use the `imp.ipynb` to generates graphs showing the importance of different features to the classifiers.
+
 ## Tuning the Classifiers
 Every household uses their appliances in a different way. No matter the size of dataset we use for training, a model can only learn th genral patterns of usage of certain appliances (e.g. ACs turn on when the weather is warmer, TVs turn on mostly during the evening, etc). Some appliances such as washing machines do not have such patterns. One way to solve this issue is to create personalized models for each household, which can be trained on data provided by the household itself and learn their specific usage patterns.
 

@@ -29,6 +29,8 @@ Each appliance needs to be calibrated; for this, the user needs to turn off thei
 
 When the first week has passed, the user can extract the files out of the raspberry Pi. `load.csv` should be uploaded on the schedule tab to generate a schedule. `solar.csv` and `battery.csv` can be uploaded on the diagnostics tab for fault detection.
 
+### If the user's inverter can provide usage history natively without the raspberry Pi, the uploaded files need to be formatted correctly. Refer to the `demo` folder for examples.
+
 ## Demo
 For a quick demo of the project, you may login to the system with the username/password `demo/demo1234`. This account has already entered and calibrated appliances. You may use the files in teh `demo` folder to upload on the website.
 

@@ -31,3 +31,16 @@ Voltronic inverters can connect the the Pi via USB, while Growatt and Deye inver
 The raspberry Pi was only tested on a Voltronic inverter as this is the only one we had access to (Raggie RG-MH3500W Hybrid Solar Inverter, uses voltronic architecture). The device should also work on Growatt and Deye based inverters, but we were not able to test it.
 
 Since the raspberry Pi can only provide aggregate electricity usage, we needed a method to disaggregate the usage into different eletrical appliances. For this we developed an NILM script that uses template matching to detect different appliances. When the user first installs the system, they need to guide it by telling it when they turned on each appliance and when they turned it back off. This only needs to be done once per appliance. With these timestamps, the system can look at the aggregate power provided by the raspberry Pi and identify the pattern of the appliance, which it can memorize and use to detect the appliance later on. This all can be seen in the `NILM.ipynb` notebook. The template is based on peak_power, steady_state_power, settle_time, and variance.
+
+## Schedule OPtimization
+After the user enters their appliances and provides one week's data for finr tuning, we need to optimize their electricity usage patterns and give them a better schedule that take sadvantage of the power their panels are able to generate without running out of electricity. For this task, we a Linear Programmer. Linear programming is a popular method for energy optimization, and a lot of academic research has been made about it.
+
+Our LP works around the following constraints:
+* Acceptable Hours: User can specify what hours are acceptable to use certain appliance (e.g. the LP cannot recommend turning on the washing machine at 3am)
+* Min SoC protection: Battery level should never fall below a specified percentage chosen by the user
+* Load Reduction: LP can recommend using certain appliances less if it is necessary to stay above the Min SoC.
+
+The following goals were set to the LP:
+* Waste (100): the battery should not stay at 100% while solar panels are still able to produce energy
+* Comfort (50): the LP should try, whenever possible, to keep the keep the number of usage hours per appliance instact. It should only cut hours when necessary.
+* Deviation (10): The LP has a weak preference for the original schedule provided by the user.

@@ -26,7 +26,7 @@ The file `tuning_test.ipynb` runs a simulation to test the performance of the tu
 ## Raspberry Pi and usage disaggregation
 The file `logger.py` runs on a respberry pi 3 and collects data from solar inverters. It supports the three most popular brands in Lebanon (Voltronic, Growatt, Deye) as well as any inverter based on the architectures of those brands. For Voltronic inverters, the program uses https://github.com/jblance/mpp-solar#, a library used to communicate with those inverters. For Growatt inverters, the program uses https://github.com/johanmeijer/grott. Similarly, the progrram uses https://github.com/UnknownHero99/pydeye for Deye based inverters.
 
-Voltronic inverters can connect the the Pi via USB, while Growatt and Deye inverters need to connect via RS485 adapters (you can use an RS485 to USB adapter).
+Voltronic inverters can connect the the Pi via USB, while Growatt and Deye inverters need to connect via RS485 adapters (you can use an RS485 to USB adapter). The device polls the inverter at a rate of 1Hz, and writes directl yto a USB storage device that needs to be plugged into it.
 
 The raspberry Pi was only tested on a Voltronic inverter as this is the only one we had access to (Raggie RG-MH3500W Hybrid Solar Inverter, uses voltronic architecture). The device should also work on Growatt and Deye based inverters, but we were not able to test it.
 

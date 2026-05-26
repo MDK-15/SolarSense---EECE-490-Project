@@ -4,6 +4,34 @@
 ### Any .py file has only been added to be imported into notebooks. They contain the same code as their .ipynb equivalent.
 ### Only the unsupervised learning notebooks were run on google colab. Everything else in this respository was run locally on Jupyter. You may need to install the required libraries. Imports can be found in the first cell of every notebook.
 
+## Problem definition
+Since the crisis that started in 2019 in Lebanon, state provided electricity has become almost absent. A lot of people have turned for solar power as an alternative. Many of these people also use solar power as their only electricity source. For these people, if their batteries run out of charge, they end up without electricity until the sun comes up again to recharge.
+
+The main problem is the following: charging peaks and usage peaks don't align. Charging peaks usually around noon, when the sun shines the most. However, consumption peaks around the evening, when people come back from work/school, and they need to turn on, lights, TVs, ACs, etc.
+
+The goal of this project is to give people who may be struggling to properly manage the power genrated by their solar panel systems recommended schedules that optimize electricity usage. This schedule should maximize the amount of electricity consumed while keeping the battery SoC from running below a certain percentage specified by the user. This schedule should tell the user when to use each of their appliances on an hourly basis.
+
+The project also includes fault detection models that can detect problems with the solar panels or the batteries.
+
+## Non-ML baseline
+The baseline is a simple heuristic: turn on appliances when the sun's irradiance is the strongest (usually around noon), and turn them off at night. While this heuristic can create improvements, it is not sufficient on its own.
+
+The heuristic does not account for weather changes in the future. The weaher in Lebanon is chaotic; it may be sunny now but rainy and cloudy in an hour or two. Simply looking at the current conditions is not enough, we also need to account for future circumstances.
+
+We also need to consider the fact that certain appliances cannot be turned on at any time. One example is the TV which needs to be turned on whenever the user needs it. We cannot tell the user to watch TV only when the sun is up.
+
+## Useing the system
+The user first needs to plug the raspberry pie into their inverter (see the section about raspberry Pi below for more details). The device needs to monitor for a minimum of one week.
+
+Once the Pi is working, the user can log into the server. They need to enter the specifications of their system (their location, capacity of the solar panels, capacity of the batteries, etc). They then need to manually enter what appliances they have at their house.
+
+Each appliance needs to be calibrated; for this, the user needs to turn off their appliance, then turn it back on and instantly press a button as indicated on the website. They should then for a few minutes and turn the appliance back off, pressing again on the same button on the website (see usage disaggregation below for more details).
+
+When the first week has passed, the user can extract the files out of the raspberry Pi. `load.csv` should be uploaded on the schedule tab to generate a schedule. `solar.csv` and `battery.csv` can be uploaded on the diagnostics tab for fault detection.
+
+## Demo
+For a quick demo of the project, you may login to the system with the username/password `demo/demo1234`. This account has already entered and calibrated appliances. You may use the files in teh `demo` folder to upload on the website.
+
 ## Data Preparation
 Our datasets included:
 * Plegma: a greek dataset showing the power usage of different appliances accross 13 households over the span of one year (exact timeline differs from house to house). This dataset was used for the cooling, hot water, and washing machine models.

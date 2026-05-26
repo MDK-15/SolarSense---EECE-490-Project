@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Welcome back{% if user.username %}, {{ user.username }}{% endif %}</h1>
+    <p class="page-desc">Here's an overview of your solar home system.</p>
+  </div>
+  <div class="header-actions">
+    <a href="{{ url_for('onboarding') }}" class="btn btn--outline btn--sm">
+      ⚙ Manage Appliances
+    </a>
+  </div>
+</div>
+
+<!-- System summary cards -->
+<div class="dash-stats">
+  <div class="dash-stat-card">
+    <div class="dash-stat-icon dash-stat-icon--solar">☀</div>
+    <div>
+      <div class="dash-stat-val">{{ user.solar_system_kw or '—' }} kW</div>
+      <div class="dash-stat-label">Solar capacity</div>
+    </div>
+  </div>
+  <div class="dash-stat-card">
+    <div class="dash-stat-icon dash-stat-icon--battery">🔋</div>
+    <div>
+      <div class="dash-stat-val">{{ user.battery_capacity or '—' }} kWh</div>
+      <div class="dash-stat-label">Battery capacity</div>
+    </div>
+  </div>
+  <div class="dash-stat-card">
+    <div class="dash-stat-icon dash-stat-icon--min">📉</div>
+    <div>
+      <div class="dash-stat-val">{{ ((user.battery_min_soc or 0.2) * 100) | int }}%</div>
+      <div class="dash-stat-label">Min charge level</div>
+    </div>
+  </div>
+  <div class="dash-stat-card">
+    <div class="dash-stat-icon dash-stat-icon--apps">⚡</div>
+    <div>
+      <div class="dash-stat-val">{{ appliances | length }}</div>
+      <div class="dash-stat-label">Appliances registered</div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick-access tabs -->
+<div class="dash-tabs">
+
+  <a href="{{ url_for('schedule') }}" class="dash-tab-card">
+    <div class="dash-tab-header">
+      <div class="dash-tab-icon">📅</div>
+      <span class="dash-tab-arrow">→</span>
+    </div>
+    <h2 class="dash-tab-title">Schedule Optimiser</h2>
+    <p class="dash-tab-desc">
+      Upload this week's power log, then generate next week's solar-aligned schedule.
+      We shift flexible loads like the washing machine and water heater to run when
+      your panels are producing the most energy.
+    </p>
+    <div class="dash-tab-footer">
+      <span class="dash-tag">XGBoost predictions</span>
+      <span class="dash-tag">Linear programming</span>
+      <span class="dash-tag">Weather forecast</span>
+    </div>
+  </a>
+
+  <a href="{{ url_for('faults') }}" class="dash-tab-card">
+    <div class="dash-tab-header">
+      <div class="dash-tab-icon">🔍</div>
+      <span class="dash-tab-arrow">→</span>
+    </div>
+    <h2 class="dash-tab-title">System Diagnostics</h2>
+    <p class="dash-tab-desc">
+      Upload your solar panel and battery logs to check for faults, unusual behaviour,
+      or early signs of degradation — before they become expensive problems.
+    </p>
+    <div class="dash-tab-footer">
+      <span class="dash-tag">Solar fault detection</span>
+      <span class="dash-tag">Battery health</span>
+      <span class="dash-tag">Neural network analysis</span>
+    </div>
+  </a>
+
+</div>
+
+<!-- Appliance status -->
+{% if appliances %}
+<section class="section">
+  <h2 class="section-title">Your Appliances</h2>
+  <div class="appliance-status-grid">
+    {% for a in appliances %}
+    <div class="app-status-card">
+      <div class="app-status-top">
+        <span class="app-status-name">{{ a.display_name }}</span>
+        <span class="app-status-type">{{ a.appliance_type | replace('_',' ') }}</span>
+      </div>
+      <div class="app-status-bottom">
+        <span class="app-tier-badge app-tier-badge--{{ 'always_on' if (a.tier == 'always_on' or a.appliance_type in ['fridge','freezer']) else a.tier }}">
+          {{ 'always on' if (a.tier == 'always_on' or a.appliance_type in ['fridge','freezer']) else a.tier | replace('_',' ') }}
+        </span>
+        {% if a.tier == 'always_on' or a.appliance_type in ['fridge','freezer'] %}
+          {% if a.power_kw %}
+            <span class="app-sig-badge app-sig-badge--ok">✓ {{ (a.power_kw * 1000)|int }}W</span>
+          {% else %}
+            <a href="{{ url_for('onboarding') }}" class="app-sig-badge app-sig-badge--pending">
+              Set power draw
+            </a>
+          {% endif %}
+        {% elif a.has_signature %}
+          <span class="app-sig-badge app-sig-badge--ok">✓ Calibrated</span>
+        {% else %}
+          <a href="{{ url_for('onboarding') }}" class="app-sig-badge app-sig-badge--pending">
+            Needs calibration
+          </a>
+        {% endif %}
+      </div>
+      {% if a.has_signature and a.signature_json %}
+        {% set sig = a.signature_json | tojson %}
+        <div class="app-power-hint" id="power-{{ a.id }}">Loading…</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% else %}
+<section class="section">
+  <div class="empty-dash">
+    <div class="empty-dash-icon">⚡</div>
+    <h3>No appliances yet</h3>
+    <p>Add your home appliances to start getting personalised schedule recommendations.</p>
+    <a href="{{ url_for('setup') }}" class="btn btn--primary">Add appliances →</a>
+  </div>
+</section>
+{% endif %}
+
+<!-- Setup checklist -->
+<section class="section">
+  <h2 class="section-title">Setup Checklist</h2>
+  <div class="checklist">
+    <div class="check-item check-item--done">
+      <span class="check-icon">✓</span>
+      <div>
+        <div class="check-label">Account created</div>
+        <div class="check-desc">Your account is active and secure.</div>
+      </div>
+    </div>
+
+    <div class="check-item {% if user.lat %}check-item--done{% endif %}">
+      <span class="check-icon">{% if user.lat %}✓{% else %}○{% endif %}</span>
+      <div>
+        <div class="check-label">Location &amp; system configured</div>
+        <div class="check-desc">
+          {% if user.lat %}
+            {{ user.lat }}, {{ user.lon }} — {{ user.solar_system_kw }} kW panels, {{ user.battery_capacity }} kWh battery
+          {% else %}
+            <a href="{{ url_for('setup') }}">Complete setup →</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% set ns = namespace(done=0) %}
+    {% for a in appliances %}
+      {% if a.has_signature or ((a.tier == 'always_on' or a.appliance_type in ['fridge','freezer']) and a.power_kw) %}
+        {% set ns.done = ns.done + 1 %}
+      {% endif %}
+    {% endfor %}
+    {% set calibrated_count = ns.done %}
+    <div class="check-item {% if appliances | length > 0 and calibrated_count == appliances | length %}check-item--done{% elif appliances | length > 0 %}check-item--partial{% endif %}">
+      <span class="check-icon">{% if calibrated_count == appliances | length and appliances | length > 0 %}✓{% else %}○{% endif %}</span>
+      <div>
+        <div class="check-label">Appliances calibrated</div>
+        <div class="check-desc">
+          {% if appliances | length == 0 %}
+            <a href="{{ url_for('setup') }}">Add your appliances →</a>
+          {% elif calibrated_count < appliances | length %}
+            {{ calibrated_count }} of {{ appliances | length }} ready.
+            <a href="{{ url_for('onboarding') }}">Complete calibration →</a>
+          {% else %}
+            All {{ calibrated_count }} appliances ready.
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="check-item">
+      <span class="check-icon">○</span>
+      <div>
+        <div class="check-label">Upload first weekly log</div>
+        <div class="check-desc">
+          Upload your Raspberry Pi <code>load.csv</code> on the
+          <a href="{{ url_for('schedule') }}">Schedule page</a> to personalise predictions.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load power draw from stored calibration profiles
+fetch('/api/appliances').then(r => r.json()).then(apps => {
+  apps.forEach(a => {
+    const el = document.getElementById('power-' + a.id);
+    if (!el) return;
+    if (a.signature_json) {
+      try {
+        const s = JSON.parse(a.signature_json);
+        el.textContent = `${s.steady_state_power_w}W steady · ${s.peak_power_w}W peak`;
+      } catch(e) { el.remove(); }
+    } else {
+      el.remove();
+    }
+  });
+});
+</script>
+{% endblock %}

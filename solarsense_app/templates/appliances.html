@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}My Appliances — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">My Appliances</h1>
+    <p class="page-desc">Add, edit or remove appliances. Changes take effect on the next schedule prediction.</p>
+  </div>
+  <a href="{{ url_for('settings') }}" class="btn btn--outline btn--sm">⚙ System Settings</a>
+</div>
+
+<!-- Existing appliances table -->
+<section class="section">
+  <div class="appliance-table" id="appliance-table">
+    {% for a in appliances %}
+    {% set is_always_on = a.tier == 'always_on' or a.appliance_type in ['fridge','freezer'] %}
+    <div class="app-row {% if is_always_on %}app-row--always-on{% endif %}"
+         id="row-{{ a.id }}">
+      <div class="app-row-name">
+        <span class="app-row-icon">{% if a.appliance_type in ['fridge','freezer'] %}🧊{% else %}⚡{% endif %}</span>
+        <span>{{ a.display_name }}</span>
+      </div>
+      <div class="app-row-type">{{ a.appliance_type | replace('_',' ') }}</div>
+      <div class="app-row-tier">
+        <span class="chip-badge chip-badge--{{ 'always_on' if is_always_on else a.tier }}">{{ ('always on' if is_always_on else a.tier | replace('_',' ')) }}</span>
+      </div>
+      <div class="app-row-hours">
+        {% if is_always_on %}
+          {% if a.power_kw %}{{ (a.power_kw * 1000)|int }}W{% else %}<span style="color:var(--solar)">set power →</span>{% endif %}
+        {% else %}
+          {{ a.hour_start }}:00 – {{ a.hour_end }}:00
+        {% endif %}
+      </div>
+      <div class="app-row-sig">
+        {% if is_always_on %}
+          <span class="app-sig-badge" style="color:var(--teal)">always on</span>
+        {% elif a.has_signature %}
+          <span class="app-sig-badge app-sig-badge--ok">✓ calibrated</span>
+        {% elif a.calibration_pending %}
+          <span class="app-sig-badge" style="color:var(--solar)">⏳ awaiting upload</span>
+        {% else %}
+          <span class="app-sig-badge app-sig-badge--pending">needs calibration</span>
+        {% endif %}
+      </div>
+      <div class="app-row-actions">
+        <a href="{{ url_for('onboarding') }}" class="btn btn--ghost btn--sm">Calibrate</a>
+        <button class="btn btn--ghost btn--sm"
+                onclick="openEdit('{{ a.id }}','{{ a.display_name }}','{{ a.tier }}',{{ a.hour_start }},{{ a.hour_end }})">
+          Edit
+        </button>
+        <button class="btn btn--ghost btn--sm" style="color:var(--red)"
+                onclick="deleteAppliance('{{ a.id }}','{{ a.display_name }}')">
+          Remove
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if not appliances %}
+    <div class="app-row app-row--empty">
+      <span style="color:var(--text-dim)">No appliances added yet.</span>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Add new appliance -->
+<section class="section">
+  <h2 class="section-title">Add an Appliance</h2>
+  <div class="add-appliance-card">
+    <div class="form-grid">
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Appliance name</label>
+          <input class="field-input" id="new-name" type="text"
+                 placeholder="e.g. Bedroom AC"/>
+        </div>
+        <div class="field">
+          <label class="field-label">
+            Category
+            <span class="tooltip" data-tip="Links to the right prediction model.">?</span>
+          </label>
+          <select class="field-input" id="new-type">
+            <option value="cooling">Cooling (AC)</option>
+            <option value="washing_machine">Washing Machine</option>
+            <option value="hot_water">Hot Water</option>
+            <option value="television">Television</option>
+            <option value="heater">Heater</option>
+            <option value="fridge">Fridge</option>
+            <option value="freezer">Freezer</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <p class="field-hint">💡 Power draw is measured automatically during calibration.</p>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">
+            Flexibility
+            <span class="tooltip" data-tip="Shiftable = moved freely. Semi-fixed = moved only as last resort. Fixed = never moved.">?</span>
+          </label>
+          <select class="field-input" id="new-tier">
+            <option value="shiftable" selected>Shiftable</option>
+            <option value="semi_fixed">Semi-fixed</option>
+            <option value="fixed">Fixed</option>
+            <option value="always_on">Always on</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Earliest hour</label>
+          <input class="field-input" id="new-hs" type="number" min="0" max="23" value="7"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Latest hour</label>
+          <input class="field-input" id="new-he" type="number" min="0" max="23" value="22"/>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--primary" onclick="addAppliance()">+ Add Appliance</button>
+        <span id="add-error" class="form-error hidden"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Edit modal -->
+<div id="edit-modal" class="modal-overlay hidden" onclick="closeModal(event)">
+  <div class="modal-card">
+    <h3 class="modal-title">Edit Appliance</h3>
+    <input type="hidden" id="edit-id"/>
+    <div class="form-grid">
+      <div class="field">
+        <label class="field-label">Display name</label>
+        <input class="field-input" id="edit-name" type="text"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Flexibility</label>
+        <select class="field-input" id="edit-tier">
+          <option value="shiftable">Shiftable</option>
+          <option value="semi_fixed">Semi-fixed</option>
+          <option value="fixed">Fixed</option>
+          <option value="always_on">Always on</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Earliest hour</label>
+          <input class="field-input" id="edit-hs" type="number" min="0" max="23"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Latest hour</label>
+          <input class="field-input" id="edit-he" type="number" min="0" max="23"/>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn--primary" onclick="saveEdit()">Save changes</button>
+        <button class="btn btn--ghost" onclick="document.getElementById('edit-modal').classList.add('hidden')">Cancel</button>
+        <span id="edit-error" class="form-error hidden"></span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-default tier based on category
+document.getElementById('new-type').addEventListener('change', function() {
+  const defaults = {cooling:'semi_fixed',heater:'semi_fixed',
+                    washing_machine:'shiftable',hot_water:'shiftable',
+                    television:'shiftable',other:'shiftable',
+                    fridge:'always_on',freezer:'always_on'};
+  document.getElementById('new-tier').value = defaults[this.value] || 'shiftable';
+});
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+async function addAppliance() {
+  const name = document.getElementById('new-name').value.trim();
+  if (!name) { showError('add-error','Please enter a name.'); return; }
+
+  const res  = await fetch('/api/setup/appliance', {
+    method:  'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      name:           name.toLowerCase().replace(/\s+/g,'_'),
+      display_name:   name,
+      appliance_type: document.getElementById('new-type').value,
+      tier:           document.getElementById('new-tier').value,
+      hour_start:     parseInt(document.getElementById('new-hs').value),
+      hour_end:       parseInt(document.getElementById('new-he').value),
+    })
+  });
+  const data = await res.json();
+  if (data.ok) {
+    location.reload();
+  } else {
+    showError('add-error', data.error || 'Failed to add.');
+  }
+}
+
+function openEdit(id, name, tier, hs, he) {
+  document.getElementById('edit-id').value   = id;
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-tier').value = tier;
+  document.getElementById('edit-hs').value   = hs;
+  document.getElementById('edit-he').value   = he;
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+
+function closeModal(e) {
+  if (e.target.id === 'edit-modal')
+    document.getElementById('edit-modal').classList.add('hidden');
+}
+
+async function saveEdit() {
+  const id = document.getElementById('edit-id').value;
+  const res = await fetch('/api/appliances/' + id, {
+    method:  'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      display_name: document.getElementById('edit-name').value.trim(),
+      tier:         document.getElementById('edit-tier').value,
+      hour_start:   parseInt(document.getElementById('edit-hs').value),
+      hour_end:     parseInt(document.getElementById('edit-he').value),
+    })
+  });
+  const data = await res.json();
+  if (data.ok) location.reload();
+  else showError('edit-error', data.error || 'Save failed.');
+}
+
+async function deleteAppliance(id, name) {
+  if (!confirm(`Remove "${name}"?`)) return;
+  const res = await fetch('/api/appliances/' + id, {method:'DELETE'});
+  if (res.ok) document.getElementById('row-' + id).remove();
+  else alert('Could not remove appliance.');
+}
+</script>
+{% endblock %}

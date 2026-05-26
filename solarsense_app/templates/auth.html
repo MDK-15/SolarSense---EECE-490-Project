@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{% if mode == 'login' %}Sign In{% else %}Create Account{% endif %} — SolarSense</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+</head>
+<body class="auth-body">
+
+<div class="auth-bg">
+  <div class="auth-orb auth-orb--1"></div>
+  <div class="auth-orb auth-orb--2"></div>
+  <div class="auth-orb auth-orb--3"></div>
+</div>
+
+<div class="auth-container">
+
+  <div class="auth-brand">
+    <span class="auth-icon">☀</span>
+    <h1 class="auth-title">SolarSense</h1>
+    <p class="auth-subtitle">Smart energy management for solar households</p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+        <div class="flash flash--{{ cat }}" style="margin-bottom:1rem;">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <a href="{{ url_for('login') }}"
+         class="auth-tab {% if mode == 'login' %}active{% endif %}">Sign In</a>
+      <a href="{{ url_for('register') }}"
+         class="auth-tab {% if mode == 'register' %}active{% endif %}">Create Account</a>
+    </div>
+
+    <form method="POST" class="auth-form">
+      <div class="field">
+        <label class="field-label">Username</label>
+        <input class="field-input" type="text" name="username"
+               placeholder="your username" autocomplete="username" required/>
+      </div>
+      <div class="field">
+        <label class="field-label">Password</label>
+        <input class="field-input" type="password" name="password"
+               placeholder="••••••••"
+               autocomplete="{% if mode == 'login' %}current-password{% else %}new-password{% endif %}"
+               required/>
+      </div>
+      {% if mode == 'register' %}
+      <p class="auth-hint">Password must be at least 8 characters.</p>
+      {% endif %}
+      <button class="btn btn--primary btn--full" type="submit">
+        {% if mode == 'login' %}Sign In{% else %}Create Account{% endif %}
+      </button>
+    </form>
+  </div>
+
+  <p class="auth-footer">
+    {% if mode == 'login' %}
+      Don't have an account? <a href="{{ url_for('register') }}">Sign up free</a>
+    {% else %}
+      Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+    {% endif %}
+  </p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Appliance Calibration — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Appliance Calibration</h1>
+    <p class="page-desc">
+      Teach the system to recognise each appliance by recording its power signature.
+      You only need to do this once per appliance.
+    </p>
+  </div>
+  <a href="{{ url_for('appliances_page') }}" class="btn btn--outline btn--sm">+ Add Appliance</a>
+</div>
+
+{% if not appliances %}
+<div class="empty-dash" style="margin-top:2rem;">
+  <div class="empty-dash-icon">⚡</div>
+  <h3>No appliances yet</h3>
+  <p>Add your appliances first, then come back to calibrate them.</p>
+  <a href="{{ url_for('appliances_page') }}" class="btn btn--primary">Add appliances →</a>
+</div>
+{% else %}
+
+<div class="onboarding-grid" id="appliance-grid">
+  {% for appl in appliances %}
+
+  {# Determine display state:
+     done        = has_signature (CSV uploaded, profile extracted)
+     pending     = calibration_pending (timestamps saved, CSV not yet uploaded)
+     ready       = neither (needs calibration)
+     Fridges and freezers never need calibration — they are always-on and only
+     require a rated power draw, so they are treated like any always_on device.
+  #}
+  {% set is_always_on = appl.tier == 'always_on' or appl.appliance_type in ['fridge','freezer'] %}
+  {% set state = 'done' if appl.has_signature else ('pending' if appl.calibration_pending else 'ready') %}
+
+  <div class="sig-card {% if state == 'done' %}sig-card--done{% elif state == 'pending' %}sig-card--pending{% endif %}"
+       id="sig-card-{{ appl.id }}">
+
+    <div class="sig-card-header">
+      <div class="sig-icon">⚡</div>
+      <div style="flex:1">
+        <h3 class="sig-name">{{ appl.display_name }}</h3>
+        <span class="sig-tier">{{ appl.appliance_type | replace('_',' ') }} · {{ appl.tier | replace('_',' ') }}</span>
+      </div>
+
+      {% if is_always_on %}
+        <div class="sig-status" style="color:var(--teal)">Always on</div>
+      {% elif state == 'done' %}
+        <div class="sig-status sig-status--done">✓ Calibrated</div>
+      {% elif state == 'pending' %}
+        <div class="sig-status sig-status--pending">⏳ Awaiting upload</div>
+      {% else %}
+        <div class="sig-status sig-status--pending">Needs calibration</div>
+      {% endif %}
+
+      <button class="btn btn--ghost btn--sm"
+              onclick="deleteAppliance('{{ appl.id }}','{{ appl.display_name }}')"
+              title="Remove" style="margin-left:0.5rem;color:var(--text-dim);">✕</button>
+    </div>
+
+    {# Always-on appliances (incl. fridge/freezer): show power input instead of calibration #}
+    {% if is_always_on %}
+      <div class="sig-always-on">
+        <p class="sig-instruction">
+          This appliance runs continuously. Enter its power draw so the scheduler can account for it.
+        </p>
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;">
+          <div class="field" style="flex:1;">
+            <label class="field-label">Power draw (Watts)</label>
+            <input class="field-input" id="power-{{ appl.id }}" type="number"
+                   min="1" max="5000" step="1"
+                   value="{{ (appl.power_kw * 1000) | int if appl.power_kw else '' }}"
+                   placeholder="e.g. 150"/>
+          </div>
+          <button class="btn btn--primary" onclick="savePower('{{ appl.id }}')">Save</button>
+        </div>
+        {% if appl.power_kw %}
+          <p class="sig-instruction" style="margin-top:0.5rem;color:var(--green);">
+            ✓ Set to {{ (appl.power_kw * 1000) | int }}W
+          </p>
+        {% endif %}
+      </div>
+
+    {# Already fully calibrated #}
+    {% elif state == 'done' %}
+      <div class="sig-info">
+        <div class="sig-details" id="sig-detail-{{ appl.id }}">
+          {% if appl.signature_json %}
+            {% set sig = appl.signature_json | fromjson %}
+            <span class="sig-stat">⚡ {{ sig.steady_state_power_w }}W steady</span>
+            <span class="sig-stat">🔺 {{ sig.peak_power_w }}W peak</span>
+            <span class="sig-stat">⏱ {{ sig.settle_time_seconds }}s settle</span>
+          {% else %}
+            <span class="sig-stat muted">Profile pending upload</span>
+          {% endif %}
+        </div>
+        <button class="btn btn--ghost btn--sm" onclick="resetSig('{{ appl.id }}')">
+          ↺ Re-calibrate
+        </button>
+      </div>
+
+    {# Timestamps saved, waiting for CSV upload #}
+    {% elif state == 'pending' %}
+      <div class="sig-done-msg">
+        <span class="sig-check">⏳</span>
+        <div>
+          <p><strong>Timestamps recorded.</strong>
+             Upload your power log on the
+             <a href="{{ url_for('schedule') }}">Schedule page</a>
+             to complete the calibration.</p>
+          <button class="btn btn--ghost btn--sm" style="margin-top:0.5rem;"
+                  onclick="resetSig('{{ appl.id }}')">
+            ↺ Re-capture timestamps
+          </button>
+        </div>
+      </div>
+
+    {# Needs calibration #}
+    {% else %}
+      <div id="step-ready-{{ appl.id }}">
+        <p class="sig-instruction">
+          Make sure <strong>{{ appl.display_name }}</strong> is currently <strong>off</strong>.
+          Press the button, then immediately turn it on.
+        </p>
+        <button class="btn btn--primary" onclick="sigStart('{{ appl.id }}')">
+          ▶ I'm turning it ON now
+        </button>
+      </div>
+
+      <div class="hidden" id="step-running-{{ appl.id }}">
+        <div class="sig-running-indicator">
+          <div class="pulse-ring"></div>
+          <span>Recording… let it run for at least 1 minute</span>
+        </div>
+        <p class="sig-instruction">When ready to turn it off, press the button.</p>
+        <button class="btn btn--danger" onclick="sigStop('{{ appl.id }}')">
+          ■ I'm turning it OFF now
+        </button>
+      </div>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+</div>
+
+<div class="onboarding-footer" style="margin-top:2rem;">
+  <p class="hint">
+    💡 <strong>How calibration works:</strong> Press the buttons above to record timestamps.
+    When you upload your weekly power log, we find the power change in that window and store
+    the appliance's unique signature. Future uploads are automatically scanned for that pattern.
+  </p>
+  <a href="{{ url_for('schedule') }}" class="btn btn--primary">Go to Schedule →</a>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const pendingEvents = {};
+
+async function sigStart(appId) {
+  const res  = await fetch('/api/signature/start', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({app_id: appId}),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    pendingEvents[appId] = data.event_id;
+    document.getElementById('step-ready-'  +appId).classList.add('hidden');
+    document.getElementById('step-running-'+appId).classList.remove('hidden');
+  } else {
+    alert('Error: ' + (data.error||'Unknown'));
+  }
+}
+
+async function sigStop(appId) {
+  const eventId = pendingEvents[appId];
+  if (!eventId) { alert('No active recording for this appliance.'); return; }
+  const res  = await fetch('/api/signature/stop', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({event_id: eventId}),
+  });
+  const data = await res.json();
+  if (data.ok) {
+    // Reload so Jinja renders the correct 'pending' state
+    location.reload();
+  }
+}
+
+async function savePower(appId) {
+  const watts = parseFloat(document.getElementById('power-'+appId).value);
+  if (!watts || watts <= 0) { alert('Please enter a valid power draw in Watts.'); return; }
+  const res = await fetch('/api/appliances/'+appId, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({power_kw: watts/1000}),
+  });
+  const data = await res.json();
+  if (data.ok) location.reload();
+  else alert('Could not save: '+(data.error||'unknown'));
+}
+
+async function resetSig(appId) {
+  if (!confirm('This will erase the current calibration. You will need to redo it.')) return;
+  const res = await fetch('/api/appliances/'+appId+'/reset-signature', {method:'POST'});
+  if (res.ok) location.reload();
+  else alert('Could not reset.');
+}
+
+async function deleteAppliance(appId, name) {
+  if (!confirm(`Remove "${name}"?`)) return;
+  const res = await fetch('/api/appliances/'+appId, {method:'DELETE'});
+  if (res.ok) {
+    document.getElementById('sig-card-'+appId)?.remove();
+    if (!document.querySelector('.sig-card')) location.reload();
+  } else alert('Could not remove appliance.');
+}
+</script>
+{% endblock %}

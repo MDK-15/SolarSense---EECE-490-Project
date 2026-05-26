@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% block title %}Schedule — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Weekly Schedule</h1>
+    <p class="page-desc">Upload this week's data to refine predictions, then generate next week's optimised schedule.</p>
+  </div>
+</div>
+
+<!-- Upload section -->
+<section class="section">
+  <h2 class="section-title">Upload This Week's Data</h2>
+  <p class="section-desc">
+    Download the <code>load.csv</code> from your Raspberry Pi and upload it here.
+    We learn your household's patterns and delete the raw data immediately after processing.
+  </p>
+
+  <div class="upload-zone" id="upload-zone"
+       ondragover="event.preventDefault(); this.classList.add('drag-over')"
+       ondragleave="this.classList.remove('drag-over')"
+       ondrop="handleDrop(event)">
+    <input type="file" id="load-file" accept=".csv" class="upload-input"
+           onchange="handleFileSelect(event)"/>
+    <div class="upload-content">
+      <div class="upload-icon">📊</div>
+      <p class="upload-text">Drop your <code>load.csv</code> here, or <label for="load-file" class="upload-link">browse</label></p>
+      <p class="upload-hint">Weekly power log from your Raspberry Pi</p>
+    </div>
+  </div>
+  <div id="upload-status" class="upload-status hidden"></div>
+</section>
+
+<!-- Predict section -->
+<section class="section">
+  <h2 class="section-title">Next Week's Recommended Schedule</h2>
+  <p class="section-desc">
+    Based on weather forecasts and your usage patterns, we predict when you'll use each appliance
+    and suggest the best times to shift flexible loads to solar-rich hours.
+  </p>
+
+  <button class="btn btn--primary btn--lg" id="predict-btn" onclick="predictSchedule()">
+    <span id="predict-btn-label">⚡ Generate Optimised Schedule</span>
+  </button>
+
+  <div id="schedule-result" class="hidden">
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div class="chart-card">
+      <h3 class="chart-title">Weather Forecast — Monday</h3>
+      <canvas id="weather-chart" height="80"></canvas>
+    </div>
+
+    <div class="heatmap-row">
+      <div class="chart-card">
+        <h3 class="chart-title">
+          Predicted Schedule
+          <span class="chart-badge chart-badge--base">before optimisation</span>
+        </h3>
+        <div id="heatmap-base" class="heatmap"></div>
+      </div>
+      <div class="chart-card">
+        <h3 class="chart-title">
+          Optimised Schedule
+          <span class="chart-badge chart-badge--opt">solar-aligned</span>
+        </h3>
+        <div id="heatmap-opt" class="heatmap"></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3 class="chart-title">Estimated Battery Level Through the Day</h3>
+      <p class="chart-desc">How your battery charge changes on an average day next week.</p>
+      <canvas id="soc-chart" height="100"></canvas>
+    </div>
+
+    <div class="schedule-detail" id="schedule-detail"></div>
+
+    <div id="lp-warning" class="warning-banner hidden">
+      ⚠ The optimiser could not shift any loads — your appliances may not have been calibrated
+      yet (power draw is 0), or the battery settings don't have enough headroom.
+      <a href="/appliances" style="color:var(--solar)">Calibrate appliances</a> or
+      <a href="/settings" style="color:var(--solar)">adjust settings</a>.
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Colour and label maps for known appliance keys
+const APP_COLORS = {
+  'elec_cooling_on':        '#3B9EEA',
+  'elec_clothes_washer_on': '#9B59B6',
+  'elec_hot_water_on':      '#2ECC71',
+  'elec_television_on':     '#E67E22',
+  'elec_heating_on':        '#E74C3C',
+  'fridge':                 '#6C757D',
+  'freezer':                '#6C757D',
+};
+const APP_LABELS = {
+  'elec_cooling_on':        'Cooling (AC)',
+  'elec_clothes_washer_on': 'Washing Machine',
+  'elec_hot_water_on':      'Hot Water',
+  'elec_television_on':     'Television',
+  'elec_heating_on':        'Heating',
+  'fridge':                 'Fridge',
+  'freezer':                'Freezer',
+};
+function getColor(appName) {
+  if (APP_COLORS[appName]) return APP_COLORS[appName];
+  // For user appliance names, pick colour based on keywords
+  const n = appName.toLowerCase();
+  if (n.includes('cool') || n.includes('ac') || n.includes('air')) return '#3B9EEA';
+  if (n.includes('wash') || n.includes('laundry'))                  return '#9B59B6';
+  if (n.includes('water') || n.includes('heat') || n.includes('boil')) return '#2ECC71';
+  if (n.includes('tv') || n.includes('tele'))                       return '#E67E22';
+  if (n.includes('fridge') || n.includes('freezer'))                return '#6C757D';
+  // Cycle through a palette for anything else
+  const palette = ['#F39C12','#1ABC9C','#E74C3C','#8E44AD','#2980B9'];
+  let hash = 0;
+  for (let i = 0; i < appName.length; i++) hash = appName.charCodeAt(i) + ((hash<<5)-hash);
+  return palette[Math.abs(hash) % palette.length];
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+}
+function handleFileSelect(e) {
+  if (e.target.files[0]) uploadFile(e.target.files[0]);
+}
+
+async function uploadFile(file) {
+  const st = document.getElementById('upload-status');
+  st.className = 'upload-status upload-status--loading';
+  st.textContent = '⏳ Processing your data… (this may take a minute)';
+  st.classList.remove('hidden');
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res  = await fetch('/api/upload/load', {method:'POST', body: fd});
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch(_) {
+      st.className = 'upload-status upload-status--error';
+      st.textContent = '✗ Server error — check the Flask console. Make sure finetune_household.py is in the solar_app/ folder.';
+      console.error('Server returned:', text.slice(0,500));
+      return;
+    }
+    if (data.ok) {
+      st.className = 'upload-status upload-status--ok';
+      st.textContent = '✓ ' + data.message;
+    } else if (data.warning) {
+      st.className = 'upload-status upload-status--warn';
+      st.textContent = '⚠ ' + data.warning;
+    } else {
+      st.className = 'upload-status upload-status--error';
+      st.textContent = '✗ ' + (data.error || 'Upload failed');
+    }
+  } catch(e) {
+    st.className = 'upload-status upload-status--error';
+    st.textContent = '✗ Network error: ' + e.message;
+  }
+}
+
+// ── Predict ───────────────────────────────────────────────────────────────────
+async function predictSchedule() {
+  const btn   = document.getElementById('predict-btn');
+  const label = document.getElementById('predict-btn-label');
+  btn.disabled = true;
+  label.textContent = '⏳ Fetching forecast & generating schedule…';
+  try {
+    const res  = await fetch('/api/schedule/predict', {method:'POST'});
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch(_) {
+      alert('Server error — check Flask console.');
+      console.error(text.slice(0,500));
+      return;
+    }
+    if (data.error) { alert('Error: ' + data.error); return; }
+    try {
+      renderSchedule(data);
+      // Persist the generated schedule so it survives tab switches / page
+      // reloads. Restored automatically on next visit to this page.
+      try { sessionStorage.setItem('lastSchedule', JSON.stringify(data)); } catch(_) {}
+    } catch(renderErr) {
+      console.error('renderSchedule error:', renderErr);
+      alert('Display error: ' + renderErr.message + '\nCheck browser console for details.');
+    }
+  } catch(e) {
+    alert('Failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    label.textContent = '⚡ Generate Optimised Schedule';
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+// Display names from server (user's actual appliance names)
+let DISPLAY_NAMES = {};
+
+// Safely (re)create a Chart on a canvas. Chart.js throws "Canvas is already in
+// use" if a live chart still owns the canvas, so we always destroy any existing
+// instance first — using Chart.getChart so it works even across page restores
+// (back/forward cache) where our own variables may be stale.
+function makeChart(canvasId, config) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || typeof Chart === 'undefined') return null;
+  try {
+    const existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+  } catch (_) {}
+  try {
+    return new Chart(canvas, config);
+  } catch (e) {
+    console.error('Chart creation failed for ' + canvasId + ':', e);
+    return null;
+  }
+}
+
+// Destroy every chart we own before leaving the page, to prevent
+// "Canvas is already in use" errors when the page is restored from cache.
+function destroyCharts() {
+  ['weather-chart', 'soc-chart'].forEach(id => {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof Chart === 'undefined') return;
+    try { const c = Chart.getChart(canvas); if (c) c.destroy(); } catch (_) {}
+  });
+}
+window.addEventListener('pagehide', destroyCharts);
+
+function humanLabel(a) {
+  if (DISPLAY_NAMES[a]) return DISPLAY_NAMES[a];
+  if (APP_LABELS[a])    return APP_LABELS[a];
+  return a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function renderSchedule(data) {
+  document.getElementById('schedule-result').classList.remove('hidden');
+
+  // Store display names from server for use in labels
+  DISPLAY_NAMES = data.display_names || {};
+
+  const opt      = data.optimized || {};
+  const feasible = opt.feasible !== false;
+
+  // Show all appliances in the schedule except always-on ones (fridge/freezer
+  // run 24/7, so a heatmap row would be uninformative). The server tells us
+  // exactly which keys are always-on, so this works for custom names too.
+  const alwaysOnNames = new Set(data.always_on || ['fridge','freezer']);
+  const base     = data.base_schedule || {};
+  const userApps = Object.keys(base).filter(a => !alwaysOnNames.has(a));
+
+  // Stats row
+  const solarSum = (opt.solar_kwh || []).reduce((a,b) => a+b, 0).toFixed(1);
+  const wasted   = opt.total_wasted_kwh || 0;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-val">${data.week_start || '—'}</div>
+      <div class="stat-label">Week starting</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">${solarSum} kWh</div>
+      <div class="stat-label">Predicted solar (Mon)</div>
+    </div>
+    <div class="stat-card stat-card--${wasted > 0 ? 'warn' : 'ok'}">
+      <div class="stat-val">${wasted} kWh</div>
+      <div class="stat-label">Wasted solar (Mon)</div>
+    </div>
+    <div class="stat-card stat-card--${feasible ? 'ok' : 'warn'}">
+      <div class="stat-val">${feasible ? '✓ Optimised' : '⚠ Base only'}</div>
+      <div class="stat-label">Schedule status</div>
+    </div>`;
+
+  // LP warning (only if not feasible)
+  document.getElementById('lp-warning').classList.toggle('hidden', feasible);
+
+  // Weather chart — fix timestamp parsing
+  const weather = (data.weather || []).slice(0, 24);
+  const wLabels = weather.map(w => {
+    // Handle "2024-07-01T08:00" or "2024-07-01 08:00:00+03:00" etc.
+    const ts = String(w.timestamp);
+    const match = ts.match(/T?(\d{2}:\d{2})/);
+    return match ? match[1] : ts.slice(11, 16);
+  });
+  const temps = weather.map(w => w.weather_drybulb_temp_c);
+  makeChart('weather-chart', {
+    type: 'line',
+    data: {
+      labels: wLabels,
+      datasets: [{
+        label: 'Temperature (°C)',
+        data: temps,
+        borderColor: '#E53935',
+        backgroundColor: 'rgba(229,57,53,0.08)',
+        fill: true, tension: 0.4, pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: {display:false} },
+      scales: {
+        x: { ticks: {maxRotation:0, autoSkip:true, maxTicksLimit:8, font:{size:11}} },
+        y: { ticks: {callback: v => v+'°C', font:{size:11}} }
+      }
+    }
+  });
+
+  // Heatmaps — base always shown; optimised falls back to base if infeasible
+  renderHeatmap('heatmap-base', base, userApps);
+  const optSched = (feasible && opt.optimized_schedule) ? opt.optimized_schedule : base;
+  renderHeatmap('heatmap-opt', optSched, userApps);
+
+  // Battery SoC — show base simulation if LP infeasible
+  const socData = opt.battery_soc_percent || null;
+  const socCard = document.getElementById('soc-chart').closest('.chart-card');
+  if (socData) {
+    // Make sure the card is visible (it may have been hidden on a previous
+    // run that had no SoC data); a canvas in a display:none parent renders 0×0.
+    if (socCard) socCard.style.display = '';
+    const minSoc = data.battery_min_soc_pct || 20;
+    makeChart('soc-chart', {
+      type: 'line',
+      data: {
+        labels: Array.from({length:24}, (_,i) => i+':00'),
+        datasets: [
+          { label:'Battery level',
+            data: socData,
+            borderColor:'#2ECC71', backgroundColor:'rgba(46,204,113,0.1)',
+            fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
+          { label:`Min level (${minSoc}%)`,
+            data: Array(24).fill(minSoc),
+            borderColor:'#E74C3C', borderDash:[4,4],
+            pointRadius:0, fill:false, borderWidth:1.5 },
+        ]
+      },
+      options: {
+        responsive:true,
+        plugins: { legend:{position:'top', labels:{font:{size:11}}} },
+        scales: { y: {min:0, max:110, ticks:{callback:v=>v+'%', font:{size:11}}} }
+      }
+    });
+  } else if (socCard) {
+    socCard.style.display = 'none';
+  }
+
+  // What changed detail
+  if (feasible && opt.optimized_schedule) {
+    renderChangeDetail(base, opt.optimized_schedule, userApps);
+  }
+}
+
+function renderHeatmap(id, schedule, apps) {
+  const el = document.getElementById(id);
+  if (!apps || !apps.length) {
+    el.innerHTML = '<p class="muted" style="padding:1rem">No appliances to display.<br>'
+      + '<a href="/appliances">Add appliances →</a></p>';
+    return;
+  }
+
+  let html = '<div class="hm-grid">';
+
+  // Labels column
+  html += '<div class="hm-labels">';
+  apps.forEach(a => {
+    html += `<div class="hm-label">${humanLabel(a)}</div>`;
+  });
+  html += '</div>';
+
+  // Cells
+  html += '<div class="hm-cells">';
+  apps.forEach(a => {
+    const row = (schedule[a] || []).slice(0, 24);
+    html += '<div class="hm-row">';
+    for (let h = 0; h < 24; h++) {
+      const v   = row[h] || 0;
+      const col = v ? (getColor(a)) : 'rgba(255,255,255,0.04)';
+      html += `<div class="hm-cell" style="background:${col}" title="${h}:00 — ${v?'ON':'OFF'}"></div>`;
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Hour labels
+  html += '<div class="hm-hours">';
+  [0,6,12,18,23].forEach(h => {
+    html += `<span style="grid-column:${h+1}">${h}:00</span>`;
+  });
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+function renderChangeDetail(base, optimised, apps) {
+  try {
+    const detail = document.getElementById('schedule-detail');
+    if (!detail) return;
+    let changed = [];
+    (apps || []).forEach(a => {
+      const bArr = base[a] || [];
+      const oArr = optimised[a] || bArr;
+      const bh = bArr.slice(0,24).reduce((s,v,i)=>v?[...s,i]:s,[]);
+      const oh = oArr.slice(0,24).reduce((s,v,i)=>v?[...s,i]:s,[]);
+      if (JSON.stringify(bh) !== JSON.stringify(oh)) {
+        changed.push({a, bh, oh});
+      }
+    });
+    if (!changed.length) {
+      detail.innerHTML = '<p class="muted">Schedule is already well aligned with solar production.</p>';
+      return;
+    }
+    let html = '<h3 class="section-subtitle">What changed?</h3><div class="change-list">';
+    changed.forEach(({a,bh,oh}) => {
+      html += `<div class="change-item">
+        <span class="change-app">${humanLabel(a)}</span>
+        <div class="change-arrows">
+          <span class="change-before">${bh.map(h=>h+':00').join(', ')||'—'}</span>
+          <span class="change-arrow">→</span>
+          <span class="change-after">${oh.map(h=>h+':00').join(', ')||'—'}</span>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+    detail.innerHTML = html;
+  } catch(e) {
+    console.warn('renderChangeDetail error:', e);
+  }
+}
+// Destroy charts before navigating away so a restored page never inherits a
+// live chart bound to a canvas (the cause of "Canvas is already in use").
+document.addEventListener('click', function(e) {
+  const link = e.target.closest('a[href]');
+  if (link && !link.href.startsWith('javascript')) {
+    destroyCharts();
+  }
+});
+
+// ── Restore the last generated schedule on load ───────────────────────────────
+// Switching tabs reloads this page, which would otherwise wipe the schedule.
+// We persisted it in sessionStorage, so re-render it here and the user picks up
+// right where they left off.
+document.addEventListener('DOMContentLoaded', () => {
+  let saved = null;
+  try { saved = sessionStorage.getItem('lastSchedule'); } catch(_) {}
+  if (!saved) return;
+  try {
+    const data = JSON.parse(saved);
+    renderSchedule(data);
+  } catch (e) {
+    console.warn('Could not restore saved schedule:', e);
+    try { sessionStorage.removeItem('lastSchedule'); } catch(_) {}
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">System Diagnostics</h1>
+  <p class="page-desc">Upload your solar and battery logs to check for faults, degradation, or unusual behaviour.</p>
+</div>
+
+<div class="fault-grid">
+
+  <!-- Solar panel card -->
+  <div class="fault-card" id="solar-card">
+    <div class="fault-card-header">
+      <div class="fault-icon fault-icon--solar">☀</div>
+      <div>
+        <h2 class="fault-title">Solar Panels</h2>
+        <p class="fault-subtitle">Detects shading, soiling, clipping, and irregular output patterns</p>
+      </div>
+    </div>
+
+    <div class="upload-zone upload-zone--sm" id="solar-upload-zone"
+         ondragover="event.preventDefault(); this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop('solar', event)">
+      <input type="file" id="solar-file" accept=".csv" class="upload-input"
+             onchange="uploadFault('solar', event.target.files[0])"/>
+      <div class="upload-content">
+        <p class="upload-text">Drop <code>solar.csv</code> here or <label for="solar-file" class="upload-link">browse</label></p>
+        <p class="upload-hint">Columns: timestamp, pv_input_voltage, pv_input_power, …</p>
+      </div>
+    </div>
+
+    <div id="solar-result" class="fault-result hidden"></div>
+  </div>
+
+  <!-- Battery card -->
+  <div class="fault-card" id="battery-card">
+    <div class="fault-card-header">
+      <div class="fault-icon fault-icon--battery">🔋</div>
+      <div>
+        <h2 class="fault-title">Battery</h2>
+        <p class="fault-subtitle">Detects overcharge, deep discharge, thermal faults, and capacity fade</p>
+      </div>
+    </div>
+
+    <div class="upload-zone upload-zone--sm" id="battery-upload-zone"
+         ondragover="event.preventDefault(); this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop('battery', event)">
+      <input type="file" id="battery-file" accept=".csv" class="upload-input"
+             onchange="uploadFault('battery', event.target.files[0])"/>
+      <div class="upload-content">
+        <p class="upload-text">Drop <code>battery.csv</code> here or <label for="battery-file" class="upload-link">browse</label></p>
+        <p class="upload-hint">Columns: timestamp, battery_voltage, battery_charging_current, …</p>
+      </div>
+    </div>
+
+    <div id="battery-result" class="fault-result hidden"></div>
+  </div>
+
+</div>
+
+<div class="fault-explainer">
+  <h3>How does fault detection work?</h3>
+  <p>
+    We use a neural network (autoencoder) trained on thousands of healthy solar and battery cycles.
+    It learns what normal operation looks like. When you upload your data, it checks whether your
+    readings match the normal pattern. Large deviations are flagged as potential faults.
+    We also run additional rule-based checks for specific known fault types like overvoltage.
+  </p>
+  <p>
+    <strong>Important:</strong> These results are informational and should not replace professional inspection.
+    If a fault is detected, contact a certified solar installer or electrician.
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+function handleDrop(type, e) {
+  e.preventDefault();
+  document.getElementById(type+'-upload-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFault(type, file);
+}
+
+async function uploadFault(type, file) {
+  const resultEl = document.getElementById(type+'-result');
+  resultEl.className = 'fault-result fault-result--loading';
+  resultEl.innerHTML = '<div class="spinner"></div><p>Analysing…</p>';
+  resultEl.classList.remove('hidden');
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res  = await fetch('/api/upload/'+type, {method:'POST', body:fd});
+    const data = await res.json();
+    renderFaultResult(type, data);
+  } catch(e) {
+    resultEl.className = 'fault-result fault-result--error';
+    resultEl.innerHTML = `<p>✗ Analysis failed: ${e.message}</p>`;
+  }
+}
+
+function renderFaultResult(type, data) {
+  const el = document.getElementById(type+'-result');
+
+  if (data.status === 'error') {
+    el.className = 'fault-result fault-result--error';
+    el.innerHTML = `<p>✗ ${data.details.join(' ')}</p>`;
+    return;
+  }
+
+  if (data.status === 'insufficient_data') {
+    el.className = 'fault-result fault-result--warn';
+    el.innerHTML = `<p>⚠ ${data.details.join(' ')}</p>`;
+    return;
+  }
+
+  const isOk = data.status === 'ok';
+  el.className = 'fault-result fault-result--' + (isOk ? 'ok' : 'fault');
+
+  let html = `
+    <div class="fault-summary">
+      <div class="fault-badge fault-badge--${isOk ? 'ok' : 'fault'}">
+        ${isOk ? '✓ No faults detected' : '⚠ Potential issue'}
+      </div>
+      <div class="fault-score">
+        Anomaly score: <strong>${(data.score*1000).toFixed(2)}</strong>
+        <span class="score-hint">(higher = more unusual)</span>
+      </div>
+    </div>
+  `;
+
+  if (data.details && data.details.length) {
+    html += '<div class="fault-details">';
+    data.anomalies.forEach((name, i) => {
+      html += `
+        <div class="fault-item">
+          <div class="fault-item-name">⚠ ${name}</div>
+          <div class="fault-item-desc">${data.details[i]||''}</div>
+        </div>`;
+    });
+    if (isOk) {
+      html += `<div class="fault-item fault-item--ok"><div class="fault-item-name">✓ ${data.details[0]}</div></div>`;
+    }
+    html += '</div>';
+  }
+
+  // Timeline chart
+  if (data.timeline && data.timeline.length > 0) {
+    const canvasId = type+'-timeline-chart';
+    html += `<div class="timeline-chart-wrap"><canvas id="${canvasId}" height="80"></canvas></div>`;
+    el.innerHTML = html;
+
+    const labels = data.timeline.map((t,i) => t.time || t.cycle || i);
+    const errors = data.timeline.map(t => t.error);
+    const anomalies = data.timeline.map(t => t.anomaly ? t.error : null);
+
+    // Destroy any chart already bound to this canvas before recreating it,
+    // so re-uploading (or returning to this tab) never throws
+    // "Canvas is already in use".
+    const canvasEl = document.getElementById(canvasId);
+    try {
+      if (typeof Chart !== 'undefined' && Chart.getChart) {
+        const existing = Chart.getChart(canvasEl);
+        if (existing) existing.destroy();
+      }
+    } catch (_) {}
+
+    new Chart(canvasEl, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label:'Reconstruction error', data:errors,
+            borderColor:'#3B9EEA', backgroundColor:'rgba(59,158,234,0.1)',
+            fill:true, tension:0.3, pointRadius:2 },
+          { label:'Anomaly', data:anomalies,
+            borderColor:'#E74C3C', backgroundColor:'rgba(231,76,60,0.8)',
+            type:'scatter', pointRadius:5 },
+        ]
+      },
+      options: {
+        responsive:true,
+        plugins:{ legend:{position:'top'}, title:{display:true, text:'Error over time'} },
+        scales:{ x:{ ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:10} } }
+      }
+    });
+    return;
+  }
+
+  el.innerHTML = html;
+}
+</script>
+{% endblock %}

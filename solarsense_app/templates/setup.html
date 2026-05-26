@@ -1,0 +1,487 @@
+{% extends "base.html" %}
+{% block title %}Setup — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Set Up Your Home</h1>
+  <p class="page-desc">Tell us about your solar system and appliances so we can personalise your schedule.</p>
+</div>
+
+<div class="setup-wizard" id="wizard">
+
+  <!-- Step indicators -->
+  <div class="wizard-steps">
+    <div class="wizard-step active" id="step-ind-1">
+      <span class="step-num">1</span>
+      <span class="step-label">Location &amp; System</span>
+    </div>
+    <div class="wizard-step" id="step-ind-2">
+      <span class="step-num">2</span>
+      <span class="step-label">Appliances</span>
+    </div>
+    <div class="wizard-step" id="step-ind-3">
+      <span class="step-num">3</span>
+      <span class="step-label">Done</span>
+    </div>
+  </div>
+
+  <!-- ── Step 1: Location + System Specs ─────────────────────────────────── -->
+  <div class="wizard-panel active" id="step-1">
+    <h2 class="panel-title">Where are you located?</h2>
+    <p class="panel-desc">We use your location to calculate how much solar your panels generate.</p>
+
+    <div class="form-grid">
+
+      <!-- Location search -->
+      <div class="field">
+        <label class="field-label">Search city</label>
+        <div class="location-search-outer">
+          <div class="location-search-wrap">
+            <input class="field-input" id="city-search" type="text"
+                   placeholder="Type a city name, e.g. Beirut"
+                   autocomplete="off"
+                   oninput="searchCity(this.value)" />
+            <button type="button" class="btn btn--outline btn--sm" onclick="geolocate()">
+              📍 My location
+            </button>
+          </div>
+          <div id="city-suggestions" class="suggestions-dropdown hidden"></div>
+        </div>
+        <div id="selected-location" class="selected-location hidden"></div>
+      </div>
+
+      <!-- Hidden lat/lon fields -->
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Latitude</label>
+          <input class="field-input" name="lat" id="lat" type="number" step="0.0001"
+                 value="{{ user.lat or 33.89 }}" required/>
+        </div>
+        <div class="field">
+          <label class="field-label">Longitude</label>
+          <input class="field-input" name="lon" id="lon" type="number" step="0.0001"
+                 value="{{ user.lon or 35.50 }}" required/>
+        </div>
+        <div class="field">
+          <label class="field-label">Timezone</label>
+          <select class="field-input" id="tz-select" name="tz">
+            <option value="Asia/Beirut" {% if not user.tz or user.tz == 'Asia/Beirut' %}selected{% endif %}>Asia/Beirut</option>
+            <option value="Africa/Cairo" {% if user.tz == 'Africa/Cairo' %}selected{% endif %}>Africa/Cairo</option>
+            <option value="Europe/Athens" {% if user.tz == 'Europe/Athens' %}selected{% endif %}>Europe/Athens</option>
+            <option value="Europe/London" {% if user.tz == 'Europe/London' %}selected{% endif %}>Europe/London</option>
+            <option value="Europe/Paris" {% if user.tz == 'Europe/Paris' %}selected{% endif %}>Europe/Paris</option>
+            <option value="America/New_York" {% if user.tz == 'America/New_York' %}selected{% endif %}>America/New_York</option>
+            <option value="UTC" {% if user.tz == 'UTC' %}selected{% endif %}>UTC</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="section-divider"><span>Battery</span></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">
+            Battery capacity (kWh)
+            <span class="tooltip" data-tip="Total energy your battery can store. A typical home solar battery is 5–15 kWh.">?</span>
+          </label>
+          <input class="field-input" id="battery_capacity" type="number" min="1" max="100" step="0.1"
+                 value="{{ user.battery_capacity or 10 }}"/>
+        </div>
+        <div class="field">
+          <label class="field-label">
+            Minimum charge level (%)
+            <span class="tooltip" data-tip="The system will never let the battery drop below this. 20% is recommended to prolong battery life.">?</span>
+          </label>
+          <input class="field-input" id="battery_min_soc" type="number" min="5" max="50" step="1"
+                 value="{{ ((user.battery_min_soc or 0.2) * 100) | int }}"/>
+        </div>
+      </div>
+
+      <div class="section-divider"><span>Solar Panels</span></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">
+            Total panel capacity (kW)
+            <span class="tooltip" data-tip="Sum of all your panel ratings. E.g. 10 × 400W panels = 4 kW.">?</span>
+          </label>
+          <input class="field-input" id="solar_system_kw" type="number" min="0.5" max="50" step="0.1"
+                 value="{{ user.solar_system_kw or 5 }}"/>
+        </div>
+        <div class="field">
+          <label class="field-label">
+            Panel tilt (°)
+            <span class="tooltip" data-tip="Angle from horizontal. Flat roof ≈ 10–15°. Pitched roof ≈ 30–45°.">?</span>
+          </label>
+          <input class="field-input" id="solar_tilt" type="number" min="0" max="90" step="1"
+                 value="{{ user.solar_tilt or 30 }}"/>
+        </div>
+        <div class="field">
+          <label class="field-label">
+            Panel direction (°)
+            <span class="tooltip" data-tip="Direction panels face. South = 180° (best for northern hemisphere). East = 90°, West = 270°.">?</span>
+          </label>
+          <input class="field-input" id="solar_azimuth" type="number" min="0" max="360" step="1"
+                 value="{{ user.solar_azimuth or 180 }}"/>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn--primary" id="btn-step1" onclick="submitStep1()">
+          Continue →
+        </button>
+        <span id="step1-error" class="form-error hidden"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Appliances ───────────────────────────────────────────────── -->
+  <div class="wizard-panel" id="step-2">
+    <h2 class="panel-title">What appliances do you have?</h2>
+    <p class="panel-desc">Add all appliances you want the system to monitor and schedule. For always-on devices like a fridge, select "Always on" — you'll enter the power draw during calibration.</p>
+
+    <!-- Added appliances list -->
+    <div class="appliance-list" id="appliance-list">
+      {% for a in appliances %}
+      <div class="appliance-chip" data-id="{{ a.id }}">
+        <span class="chip-icon">⚡</span>
+        <span>{{ a.display_name }}</span>
+        <span class="chip-badge chip-badge--{{ a.tier }}">{{ a.tier.replace('_',' ') }}</span>
+        <button class="chip-remove" onclick="removeAppliance('{{ a.id }}', this)">×</button>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Add appliance form -->
+    <div class="add-appliance-card">
+      <h3 class="card-subtitle">Add an appliance</h3>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Appliance name</label>
+          <input class="field-input" id="new-app-name" type="text"
+                 placeholder="e.g. AC Living Room"/>
+        </div>
+        <div class="field">
+          <label class="field-label">
+            Category
+            <span class="tooltip" data-tip="Links your appliance to the right prediction model. Choose Other if none fit.">?</span>
+          </label>
+          <select class="field-input" id="new-app-type">
+            <option value="cooling">Cooling (AC)</option>
+            <option value="washing_machine">Washing Machine</option>
+            <option value="hot_water">Hot Water</option>
+            <option value="television">Television</option>
+            <option value="heater">Heater</option>
+            <option value="fridge">Fridge</option>
+            <option value="freezer">Freezer</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="field-hint" style="margin-top:0.5rem;">
+        💡 Power draw is measured automatically during calibration.
+      </p>
+
+      <div class="field-row" style="margin-top:0.75rem;">
+        <div class="field">
+          <label class="field-label">
+            Flexibility
+            <span class="tooltip" data-tip="Shiftable = freely moved to solar hours. Semi-fixed = moved only as last resort. Fixed = never moved.">?</span>
+          </label>
+          <select class="field-input" id="new-app-tier">
+            <option value="semi_fixed">Semi-fixed (AC / Heater default)</option>
+            <option value="shiftable" selected>Shiftable (most appliances)</option>
+            <option value="fixed">Fixed (cooking etc.)</option>
+            <option value="always_on">Always on</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Earliest hour</label>
+          <input class="field-input" id="new-app-hour-start" type="number"
+                 min="0" max="23" value="7"/>
+        </div>
+        <div class="field">
+          <label class="field-label">Latest hour</label>
+          <input class="field-input" id="new-app-hour-end" type="number"
+                 min="0" max="23" value="22"/>
+        </div>
+      </div>
+
+      <button class="btn btn--outline" style="margin-top:1rem;" type="button"
+              id="btn-add-app" onclick="addAppliance()">
+        + Add Appliance
+      </button>
+      <span id="add-app-error" class="form-error hidden"></span>
+    </div>
+
+    <div class="form-actions" style="margin-top:1.5rem;">
+      <button class="btn btn--ghost" onclick="goToStep(1)">← Back</button>
+      <button class="btn btn--primary" id="btn-finish" onclick="finishSetup()">
+        Complete Setup →
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Step 3: Done ─────────────────────────────────────────────────────── -->
+  <div class="wizard-panel" id="step-3">
+    <div class="success-panel">
+      <div class="success-icon">✓</div>
+      <h2>You're all set!</h2>
+      <p>The next step is to calibrate each appliance so the system learns its power signature.</p>
+      <a href="{{ url_for('onboarding') }}" class="btn btn--primary">
+        Calibrate appliances →
+      </a>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Utility ──────────────────────────────────────────────────────────────────
+function showError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  if (loading) btn.dataset.orig = btn.textContent;
+  else btn.textContent = btn.dataset.orig || btn.textContent;
+}
+
+// ── Wizard navigation ────────────────────────────────────────────────────────
+function goToStep(n) {
+  document.querySelectorAll('.wizard-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active','done'));
+  const panel = document.getElementById('step-' + n);
+  const ind   = document.getElementById('step-ind-' + n);
+  if (panel) panel.classList.add('active');
+  if (ind)   ind.classList.add('active');
+  for (let i = 1; i < n; i++) {
+    const prev = document.getElementById('step-ind-' + i);
+    if (prev) prev.classList.add('done');
+  }
+  window.scrollTo(0, 0);
+}
+
+// ── Location search via Open-Meteo geocoding ─────────────────────────────────
+let searchTimer = null;
+
+function searchCity(query) {
+  clearTimeout(searchTimer);
+  const box = document.getElementById('city-suggestions');
+  if (query.length < 2) { box.classList.add('hidden'); return; }
+
+  searchTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch('/api/geocode?q=' + encodeURIComponent(query));
+      const data = await res.json();
+      renderSuggestions(data.results || []);
+    } catch(e) {
+      box.classList.add('hidden');
+    }
+  }, 350);
+}
+
+function renderSuggestions(results) {
+  const box = document.getElementById('city-suggestions');
+  if (!results.length) { box.classList.add('hidden'); return; }
+
+  box.innerHTML = results.map(r => `
+    <div class="suggestion-item"
+         onclick="selectLocation(${r.latitude}, ${r.longitude}, '${escHtml(r.name)}', '${escHtml(r.country || '')}', '${escHtml(r.timezone || 'UTC')}')">
+      <span class="suggestion-name">${escHtml(r.name)}</span>
+      <span class="suggestion-detail">${escHtml(r.admin1 || '')}${r.admin1 && r.country ? ', ' : ''}${escHtml(r.country || '')}</span>
+    </div>`
+  ).join('');
+  box.classList.remove('hidden');
+}
+
+function selectLocation(lat, lon, name, country, tz) {
+  document.getElementById('lat').value = lat.toFixed(4);
+  document.getElementById('lon').value = lon.toFixed(4);
+  document.getElementById('city-search').value = name + (country ? ', ' + country : '');
+  document.getElementById('city-suggestions').classList.add('hidden');
+
+  // Auto-select timezone if we have one
+  const tzSel = document.getElementById('tz-select');
+  for (let opt of tzSel.options) {
+    if (opt.value === tz) { tzSel.value = tz; break; }
+  }
+
+  const sel = document.getElementById('selected-location');
+  sel.textContent = `✓ ${name}${country ? ', '+country : ''} — ${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+  sel.classList.remove('hidden');
+}
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function geolocate() {
+  if (!navigator.geolocation) { alert('Geolocation not available in this browser.'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    document.getElementById('lat').value = pos.coords.latitude.toFixed(4);
+    document.getElementById('lon').value = pos.coords.longitude.toFixed(4);
+    const sel = document.getElementById('selected-location');
+    sel.textContent = `✓ ${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)} (GPS)`;
+    sel.classList.remove('hidden');
+  }, () => alert('Could not get your location. Please search manually.'));
+}
+
+// Close suggestions when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('.location-search-outer')) {
+    const box = document.getElementById('city-suggestions');
+    if (box) box.classList.add('hidden');
+  }
+});
+
+// ── Step 1 submit ────────────────────────────────────────────────────────────
+async function submitStep1() {
+  setLoading('btn-step1', true);
+  try {
+    const body = {
+      lat:              parseFloat(document.getElementById('lat').value),
+      lon:              parseFloat(document.getElementById('lon').value),
+      tz:               document.getElementById('tz-select').value,
+      battery_capacity: parseFloat(document.getElementById('battery_capacity').value),
+      battery_min_soc:  parseFloat(document.getElementById('battery_min_soc').value),
+      solar_system_kw:  parseFloat(document.getElementById('solar_system_kw').value),
+      solar_tilt:       parseFloat(document.getElementById('solar_tilt').value),
+      solar_azimuth:    parseFloat(document.getElementById('solar_azimuth').value),
+    };
+
+    if (isNaN(body.lat) || isNaN(body.lon)) {
+      showError('step1-error', 'Please select a location first.');
+      return;
+    }
+
+    const res  = await fetch('/api/setup/step1', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      goToStep(2);
+    } else {
+      showError('step1-error', data.error || 'Something went wrong.');
+    }
+  } catch(e) {
+    showError('step1-error', 'Network error: ' + e.message);
+  } finally {
+    setLoading('btn-step1', false);
+  }
+}
+
+// ── Step 2: tier defaults ─────────────────────────────────────────────────────
+function updateTierDefaults() {
+  const typeEl = document.getElementById('new-app-type');
+  const tierEl = document.getElementById('new-app-tier');
+  if (!typeEl || !tierEl) return;
+  const defaults = {
+    cooling:'semi_fixed', heater:'semi_fixed',
+    washing_machine:'shiftable', hot_water:'shiftable',
+    television:'shiftable', other:'shiftable',
+    fridge:'always_on', freezer:'always_on',
+  };
+  tierEl.value = defaults[typeEl.value] || 'shiftable';
+}
+
+document.getElementById('new-app-type').addEventListener('change', updateTierDefaults);
+updateTierDefaults();  // set initial value immediately
+
+// ── Add appliance ─────────────────────────────────────────────────────────────
+async function addAppliance() {
+  const name    = document.getElementById('new-app-name').value.trim();
+  const appType = document.getElementById('new-app-type').value;
+  const tier    = document.getElementById('new-app-tier').value;
+  const hs      = parseInt(document.getElementById('new-app-hour-start').value);
+  const he      = parseInt(document.getElementById('new-app-hour-end').value);
+
+  if (!name) {
+    showError('add-app-error', 'Please enter a name for the appliance.');
+    return;
+  }
+
+  setLoading('btn-add-app', true);
+  try {
+    const res  = await fetch('/api/setup/appliance', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({
+        name:           name.toLowerCase().replace(/\s+/g,'_'),
+        display_name:   name,
+        appliance_type: appType,
+        tier:           tier,
+        hour_start:     hs,
+        hour_end:       he,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const LABELS = {cooling:'AC',washing_machine:'Washer',hot_water:'Hot Water',
+                      television:'TV',heater:'Heater',other:'Other'};
+      const list = document.getElementById('appliance-list');
+      const div  = document.createElement('div');
+      div.className    = 'appliance-chip';
+      div.dataset.id   = data.app_id;
+      div.innerHTML = `
+        <span class="chip-icon">⚡</span>
+        <span>${escHtml(name)}</span>
+        <span class="chip-badge">${LABELS[appType]||appType}</span>
+        <span class="chip-badge chip-badge--${tier}">${tier.replace(/_/g,' ')}</span>
+        <button class="chip-remove" onclick="removeAppliance('${data.app_id}',this)">×</button>`;
+      list.appendChild(div);
+      document.getElementById('new-app-name').value = '';
+      updateTierDefaults();
+    } else {
+      showError('add-app-error', data.error || 'Failed to add appliance.');
+    }
+  } catch(e) {
+    showError('add-app-error', 'Network error: ' + e.message);
+  } finally {
+    setLoading('btn-add-app', false);
+  }
+}
+
+// ── Remove appliance ──────────────────────────────────────────────────────────
+async function removeAppliance(id, btn) {
+  try {
+    await fetch('/api/appliances/' + id, {method:'DELETE'});
+    btn.closest('.appliance-chip').remove();
+  } catch(e) { alert('Could not remove: ' + e.message); }
+}
+
+// ── Finish setup ──────────────────────────────────────────────────────────────
+async function finishSetup() {
+  setLoading('btn-finish', true);
+  try {
+    const res  = await fetch('/api/setup/finish', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+    });
+    const data = await res.json();
+    if (data.ok) {
+      goToStep(3);
+    } else {
+      alert(data.error || 'Could not complete setup.');
+    }
+  } catch(e) {
+    alert('Network error: ' + e.message);
+  } finally {
+    setLoading('btn-finish', false);
+  }
+}
+</script>
+{% endblock %}

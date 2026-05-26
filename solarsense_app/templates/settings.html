@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}System Settings — SolarSense{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">System Settings</h1>
+  <p class="page-desc">Update your solar panel and battery specifications.</p>
+</div>
+
+<div class="settings-card">
+  <div class="form-grid" id="settings-form">
+
+    <div class="section-divider"><span>Location</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Latitude</label>
+        <input class="field-input" id="s-lat" type="number" step="0.0001"
+               value="{{ user.lat or 33.89 }}"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Longitude</label>
+        <input class="field-input" id="s-lon" type="number" step="0.0001"
+               value="{{ user.lon or 35.50 }}"/>
+      </div>
+      <div class="field">
+        <label class="field-label">Timezone</label>
+        <select class="field-input" id="s-tz">
+          <option value="Asia/Beirut"   {% if user.tz == 'Asia/Beirut'   %}selected{% endif %}>Asia/Beirut</option>
+          <option value="Africa/Cairo"  {% if user.tz == 'Africa/Cairo'  %}selected{% endif %}>Africa/Cairo</option>
+          <option value="Europe/Athens" {% if user.tz == 'Europe/Athens' %}selected{% endif %}>Europe/Athens</option>
+          <option value="Europe/London" {% if user.tz == 'Europe/London' %}selected{% endif %}>Europe/London</option>
+          <option value="Europe/Paris"  {% if user.tz == 'Europe/Paris'  %}selected{% endif %}>Europe/Paris</option>
+          <option value="UTC"           {% if user.tz == 'UTC'           %}selected{% endif %}>UTC</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section-divider"><span>Battery</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">
+          Capacity (kWh)
+          <span class="tooltip" data-tip="Total energy storage of your battery.">?</span>
+        </label>
+        <input class="field-input" id="s-cap" type="number" min="1" max="100" step="0.1"
+               value="{{ user.battery_capacity or 10 }}"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Minimum charge (%)
+          <span class="tooltip" data-tip="We will never schedule loads that drain below this level.">?</span>
+        </label>
+        <input class="field-input" id="s-soc" type="number" min="5" max="50" step="1"
+               value="{{ ((user.battery_min_soc or 0.2) * 100) | int }}"/>
+      </div>
+    </div>
+
+    <div class="section-divider"><span>Solar Panels</span></div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">
+          Total capacity (kW)
+          <span class="tooltip" data-tip="Sum of all panel ratings. E.g. 10 × 400W = 4 kW.">?</span>
+        </label>
+        <input class="field-input" id="s-kw" type="number" min="0.5" max="50" step="0.1"
+               value="{{ user.solar_system_kw or 5 }}"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Tilt (°)
+          <span class="tooltip" data-tip="Angle from horizontal. Flat roof ≈ 10–15°. Pitched roof ≈ 30–45°.">?</span>
+        </label>
+        <input class="field-input" id="s-tilt" type="number" min="0" max="90" step="1"
+               value="{{ user.solar_tilt or 30 }}"/>
+      </div>
+      <div class="field">
+        <label class="field-label">
+          Direction (°)
+          <span class="tooltip" data-tip="South = 180° (best for northern hemisphere). East = 90°, West = 270°.">?</span>
+        </label>
+        <input class="field-input" id="s-az" type="number" min="0" max="360" step="1"
+               value="{{ user.solar_azimuth or 180 }}"/>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn--primary" id="save-btn" onclick="saveSettings()">
+        Save Settings
+      </button>
+      <span id="save-status" class="hidden"></span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveSettings() {
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  try {
+    const res  = await fetch('/api/user/settings', {
+      method:  'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        lat:              parseFloat(document.getElementById('s-lat').value),
+        lon:              parseFloat(document.getElementById('s-lon').value),
+        tz:               document.getElementById('s-tz').value,
+        battery_capacity: parseFloat(document.getElementById('s-cap').value),
+        battery_min_soc:  parseFloat(document.getElementById('s-soc').value),
+        solar_system_kw:  parseFloat(document.getElementById('s-kw').value),
+        solar_tilt:       parseFloat(document.getElementById('s-tilt').value),
+        solar_azimuth:    parseFloat(document.getElementById('s-az').value),
+      })
+    });
+    const data = await res.json();
+    const st   = document.getElementById('save-status');
+    if (data.ok) {
+      st.className = 'form-ok'; st.textContent = '✓ Settings saved';
+    } else {
+      st.className = 'form-error'; st.textContent = data.error || 'Save failed';
+    }
+    st.classList.remove('hidden');
+    setTimeout(() => st.classList.add('hidden'), 3000);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Settings';
+  }
+}
+</script>
+{% endblock %}

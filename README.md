@@ -1,4 +1,5 @@
 # SolarSense - EECE 490 Project
+### This readme only provides a brief overview of the different files and methods we used throughout the project. Details can be found inside the notebooks.
 ### Many of the notebooks in this repository contain PATH variables in the first cell. The user needs to change them to their desired paths.
 ### Any .py has only been added to be imported into notebooks. They contain the same code as their .ipynb equivalent.
 ### Only the unsupervised learning notebooks were run on google colab. Everything else in this respository was run locally on Jupyter.
